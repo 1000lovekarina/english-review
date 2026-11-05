@@ -1,0 +1,298 @@
+partnerScanTime = 1754148077
+cloudFilesActiveLog = 
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f6f7f9">
+<title>英文單字複習</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f6f8;color:#202124;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{padding:26px 20px 18px;background:white}
+header small{color:#777}
+h1{font-size:26px;margin:8px 0}
+main{max-width:650px;margin:auto;padding:14px}
+.card{background:white;border-radius:17px;padding:17px;margin-bottom:13px;box-shadow:0 2px 10px #00000008}
+h2{font-size:18px;margin:0 0 13px}
+h3{font-size:16px;margin:0 0 7px}
+.muted{color:#777;font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.stat{background:#f5f6f8;border-radius:12px;padding:13px 8px;text-align:center}
+.stat strong{font-size:23px;display:block}
+.stat span{font-size:12px;color:#777}
+input,textarea,button{font:inherit}
+input,textarea{width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;margin:6px 0 12px;background:white}
+textarea{min-height:90px;resize:vertical}
+button{border:0;border-radius:10px;padding:11px 14px;background:#222;color:white;cursor:pointer}
+button.secondary{background:#edf0f2;color:#222}
+button.danger{background:#fff0f0;color:#b42318}
+button:disabled{opacity:.4}
+.full{width:100%}
+.review{border-top:1px solid #eee;padding:13px 0}
+.review:first-child{border-top:0}
+.review-top{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.pill{font-size:12px;padding:5px 9px;border-radius:20px;background:#fff0d8;color:#8a5200;white-space:nowrap}
+.pill.done{background:#e6f5eb;color:#16733b}
+.actions{display:flex;gap:8px;margin-top:10px}
+.actions button{flex:1}
+details summary{cursor:pointer;font-weight:600}
+.empty{padding:15px 0;color:#777;text-align:center}
+nav{display:flex;gap:8px;overflow:auto;margin:0 0 13px}
+nav button{white-space:nowrap}
+nav button.active{background:#222;color:white}
+nav button:not(.active){background:#e8eaed;color:#333}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <small>MY STUDY SPACE</small>
+  <h1>英文單字複習</h1>
+  <div id="todayText" class="muted"></div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="stats">
+      <div class="stat"><strong id="dueCount">0</strong><span>今日待複習</span></div>
+      <div class="stat"><strong id="groupCount">0</strong><span>單字組總數</span></div>
+      <div class="stat"><strong id="doneCount">0</strong><span>累計完成次數</span></div>
+    </div>
+  </section>
+
+  <nav>
+    <button class="active" data-tab="today">今日複習</button>
+    <button data-tab="groups">所有單字組</button>
+    <button data-tab="add">新增單字組</button>
+    <button data-tab="settings">設定與備份</button>
+  </nav>
+
+  <section id="today" class="card">
+    <h2>今天要複習什麼？</h2>
+    <p class="muted">包含今天到期及之前尚未完成的項目。</p>
+    <div id="todayList"></div>
+  </section>
+
+  <section id="groups" class="card hidden">
+    <h2>我的單字組</h2>
+    <div id="groupList"></div>
+  </section>
+
+  <section id="add" class="card hidden">
+    <h2>新增單字組</h2>
+    <label>單字組名稱</label>
+    <input id="newName" placeholder="例如：L1、Lesson 1">
+    <label>學習日期</label>
+    <input id="newDate" type="date">
+    <label>單字內容（選填）</label>
+    <textarea id="newWords" placeholder="abandon 放棄&#10;ability 能力&#10;able 有能力的"></textarea>
+    <label>複習間隔（距離學習日的天數）</label>
+    <input id="newIntervals" value="1,2,4,7,14,30">
+    <p class="muted">例如輸入 1,2,4,7,14,30，就會安排六次複習。</p>
+    <button class="full" onclick="addGroup()">建立單字組</button>
+  </section>
+
+  <section id="settings" class="card hidden">
+    <h2>資料管理</h2>
+    <p class="muted">資料保存在這台裝置的瀏覽器中。建議定期備份。</p>
+    <button class="full" onclick="backup()">匯出資料備份</button>
+    <label>從備份檔還原</label>
+    <input type="file" accept=".json" onchange="restore(event)">
+    <button class="full secondary" onclick="showStats()">查看學習統計</button>
+    <div id="statistics" class="muted" style="margin-top:12px"></div>
+  </section>
+</main>
+
+<script>
+const STORAGE_KEY = "my_english_review_app_v1";
+let groups = [];
+try {
+  groups = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  if (!Array.isArray(groups)) groups = [];
+} catch(e) { groups = []; }
+
+function localDate(d = new Date()) {
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function addDays(date, days) {
+  const d=new Date(date+"T12:00:00");
+  d.setDate(d.getDate()+days);
+  return localDate(d);
+}
+function today(){return localDate();}
+function save(){
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(groups));
+  render();
+}
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g,c=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+function dueItems(g) {
+  return g.intervals.map((days,index)=>({
+    days,index,date:addDays(g.date,days),
+    done:g.completed.includes(index)
+  }));
+}
+function isDue(item) {
+  return !item.done && item.date<=today();
+}
+function addGroup(){
+  const name=document.getElementById("newName").value.trim();
+  const date=document.getElementById("newDate").value;
+  const words=document.getElementById("newWords").value.trim();
+  const intervals=document.getElementById("newIntervals").value
+    .split(",").map(x=>Number(x.trim())).filter(x=>x!==0);
+  if(!name||!date||!intervals.length||
+    intervals.some(x=>!Number.isInteger(x)||x<1)){
+    alert("請填寫名稱、學習日期，並確認複習間隔是正整數。");
+    return;
+  }
+  if(new Set(intervals).size!==intervals.length){
+    alert("複習間隔請勿重複。");
+    return;
+  }
+  groups.push({
+    id:Date.now().toString()+Math.random().toString(16).slice(2),
+    name,date,words,intervals:intervals.sort((a,b)=>a-b),
+    completed:[],history:[]
+  });
+  save();
+  document.getElementById("newName").value="";
+  document.getElementById("newWords").value="";
+  openTab("today");
+}
+function complete(id,index){
+  const g=groups.find(x=>x.id===id);
+  if(!g)return;
+  if(!g.completed.includes(index)){
+    g.completed.push(index);
+    g.history.push({index,date:today()});
+  }
+  save();
+}
+function undo(id,index){
+  const g=groups.find(x=>x.id===id);
+  if(!g)return;
+  g.completed=g.completed.filter(x=>x!==index);
+  g.history=g.history.filter(x=>x.index!==index);
+  save();
+}
+function deleteGroup(id){
+  if(!confirm("確定刪除這組單字及其複習紀錄？"))return;
+  groups=groups.filter(g=>g.id!==id);
+  save();
+}
+function render(){
+  document.getElementById("todayText").textContent=
+    new Date().toLocaleDateString("zh-TW",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+  let all=[];
+  groups.forEach(g=>dueItems(g).forEach(item=>{
+    if(isDue(item))all.push({g,...item});
+  }));
+  all.sort((a,b)=>a.date.localeCompare(b.date));
+  document.getElementById("dueCount").textContent=all.length;
+  document.getElementById("groupCount").textContent=groups.length;
+  document.getElementById("doneCount").textContent=
+    groups.reduce((sum,g)=>sum+(g.history||[]).length,0);
+
+  document.getElementById("todayList").innerHTML=all.length?all.map(x=>{
+    const late=x.date<today();
+    return `<div class="review">
+      <div class="review-top">
+        <div><h3>${escapeHTML(x.g.name)}</h3>
+        <div class="muted">Day ${x.days} · ${x.date}</div></div>
+        <span class="pill">${late?"已逾期":"今日到期"}</span>
+      </div>
+      ${x.g.words?`<p class="muted">${escapeHTML(x.g.words).replace(/\n/g,"<br>")}</p>`:""}
+      <button class="full" onclick="complete('${x.g.id}',${x.index})">完成這次複習 ✓</button>
+    </div>`;
+  }).join(""):'<div class="empty">太好了！今天沒有待複習的單字組。</div>';
+
+  document.getElementById("groupList").innerHTML=groups.length?groups.map(g=>{
+    const items=dueItems(g);
+    const completed=items.filter(x=>x.done).length;
+    return `<div class="review">
+      <h3>${escapeHTML(g.name)}</h3>
+      <div class="muted">學習日期：${g.date}</div>
+      <div class="muted">複習間隔：${g.intervals.join("、")} 天</div>
+      <div class="muted">完成進度：${completed}/${items.length}</div>
+      ${items.map(x=>`<div class="review-top" style="padding:6px 0">
+        <span class="muted">Day ${x.days} · ${x.date}</span>
+        ${x.done?'<span class="pill done">已完成</span>':
+        `<span class="pill">${x.date<today()?"逾期":x.date===today()?"今天":"尚未到期"}</span>`}
+      </div>`).join("")}
+      <div class="actions">
+        <button class="secondary" onclick="editIntervals('${g.id}')">修改間隔</button>
+        <button class="danger" onclick="deleteGroup('${g.id}')">刪除</button>
+      </div>
+    </div>`;
+  }).join(""):'<div class="empty">還沒有單字組，先新增一組吧！</div>';
+}
+function editIntervals(id){
+  const g=groups.find(x=>x.id===id);
+  if(!g)return;
+  const value=prompt("輸入新的複習間隔，以逗號分隔。已完成紀錄會保留相同序號的項目。",g.intervals.join(","));
+  if(value===null)return;
+  const arr=value.split(",").map(x=>Number(x.trim()));
+  if(!arr.length||arr.some(x=>!Number.isInteger(x)||x<1)||
+    new Set(arr).size!==arr.length){
+    alert("格式錯誤，請輸入不重複的正整數。");return;
+  }
+  g.intervals=arr.sort((a,b)=>a-b);
+  g.completed=g.completed.filter(i=>i<g.intervals.length);
+  g.history=(g.history||[]).filter(x=>x.index<g.intervals.length);
+  save();
+}
+function openTab(id){
+  document.querySelectorAll("main>section").forEach(s=>s.classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+  document.querySelectorAll("nav button").forEach(b=>{
+    b.classList.toggle("active",b.dataset.tab===id);
+  });
+}
+document.querySelectorAll("nav button").forEach(b=>{
+  b.addEventListener("click",()=>openTab(b.dataset.tab));
+});
+function backup(){
+  const blob=new Blob([JSON.stringify(groups,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download="英文單字複習備份.json";a.click();
+  URL.revokeObjectURL(url);
+}
+function restore(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      if(!Array.isArray(data))throw Error();
+      if(!confirm("還原會取代目前這台裝置的資料，確定繼續？"))return;
+      groups=data;save();alert("資料還原成功！");
+    }catch(e){alert("備份檔格式不正確。");}
+  };
+  reader.readAsText(file);
+}
+function showStats(){
+  const total=groups.reduce((s,g)=>s+g.intervals.length,0);
+  const done=groups.reduce((s,g)=>s+g.completed.length,0);
+  const rate=total?Math.round(done/total*100):0;
+  document.getElementById("statistics").innerHTML=
+    `總複習次數：${total}<br>已完成次數：${done}<br>整體完成率：${rate}%`;
+}
+document.getElementById("newDate").value=today();
+render();
+</script>
+</body>
+</html>
